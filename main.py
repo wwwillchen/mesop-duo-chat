@@ -1,6 +1,8 @@
 import mesop as me
-from data_model import State, Models, ModelDialogState
+from data_model import State, Models, ModelDialogState, Conversation, ChatMessage
 from dialog import dialog, dialog_actions
+import claude
+import gemini
 
 def change_model_option(e: me.CheckboxChangeEvent):
     s = me.state(ModelDialogState)
@@ -94,6 +96,31 @@ def page():
                 style=me.Style(font_size=20, margin=me.Margin(bottom=24)),
             )
             chat_input()
+            display_conversations()
+
+def display_conversations():
+    state = me.state(State)
+    for conversation in state.conversations:
+        with me.box(style=me.Style(margin=me.Margin(bottom=24))):
+            me.text(f"Model: {conversation.model}", style=me.Style(font_weight=500))
+            for message in conversation.messages:
+                display_message(message)
+
+def display_message(message: ChatMessage):
+    style = me.Style(
+        padding=me.Padding.all(12),
+        border_radius=8,
+        margin=me.Margin(bottom=8),
+    )
+    if message.role == "user":
+        style.background = "#e7f2ff"
+    else:
+        style.background = "#ffffff"
+
+    with me.box(style=style):
+        me.markdown(message.content)
+        if message.in_progress:
+            me.progress_spinner()
 
 def header():
     with me.box(
@@ -167,6 +194,32 @@ def on_blur(e: me.InputBlurEvent):
 
 def send_prompt(e: me.ClickEvent):
     state = me.state(State)
-    print(f"Sending prompt: {state.input}")
-    print(f"Selected models: {state.models}")
+    if not state.conversations:
+        for model in state.models:
+            state.conversations.append(Conversation(model=model, messages=[]))
+    input = state.input
     state.input = ""
+
+    for conversation in state.conversations:
+        model = conversation.model
+        messages = conversation.messages
+        history = messages[:]
+        messages.append(ChatMessage(role="user", content=input))
+        messages.append(ChatMessage(role="model", in_progress=True))
+        yield
+
+        if model == Models.GEMINI_1_5_FLASH.value:
+            llm_response = gemini.send_prompt_flash(input, history)
+        elif model == Models.GEMINI_1_5_PRO.value:
+            llm_response = gemini.send_prompt_pro(input, history)
+        elif model == Models.CLAUDE_3_5_SONNET.value:
+            llm_response = claude.call_claude_sonnet(input, history)
+        else:
+            raise Exception("Unhandled model", model)
+
+        for chunk in llm_response:
+            messages[-1].content += chunk
+            yield
+        messages[-1].in_progress = False
+        yield
+
