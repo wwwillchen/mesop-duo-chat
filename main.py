@@ -79,9 +79,14 @@ STYLESHEETS = [
   "https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap"
 ]
 
+SECURITY_POLICY = me.SecurityPolicy(
+    allowed_iframe_parents=["https://huggingface.co"]
+)
+
 @me.page(
     path="/",
     stylesheets=STYLESHEETS,
+    security_policy=SECURITY_POLICY,
 )
 def home_page():
     model_picker_dialog()
@@ -138,7 +143,7 @@ def click_example(e: me.ClickEvent):
     state = me.state(State)
     state.input = e.key
 
-@me.page(path="/conversation", stylesheets=STYLESHEETS)
+@me.page(path="/conversation", stylesheets=STYLESHEETS, security_policy=SECURITY_POLICY)
 def conversation_page():
     state = me.state(State)
     model_picker_dialog()
