@@ -1,0 +1,4 @@
+mesop
+gunicorn
+anthropic
+google-generativeai
