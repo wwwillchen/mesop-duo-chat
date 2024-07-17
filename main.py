@@ -75,13 +75,15 @@ ROOT_BOX_STYLE = me.Style(
     flex_direction="column",
 )
 
+STYLESHEETS = [
+  "https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap"
+]
+
 @me.page(
     path="/",
-    stylesheets=[
-        "https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap"
-    ],
+    stylesheets=STYLESHEETS,
 )
-def page():
+def home_page():
     model_picker_dialog()
     with me.box(style=ROOT_BOX_STYLE):
         header()
@@ -95,36 +97,141 @@ def page():
                 "Chat with multiple models at once",
                 style=me.Style(font_size=20, margin=me.Margin(bottom=24)),
             )
+            # Uncomment this in the next step:
+            examples_row()
             chat_input()
-            display_conversations()
 
-def display_conversations():
+EXAMPLES = [
+    "Create a file-lock in Python",
+    "Write an email to Congress to have free milk for all",
+    "Make a nice box shadow in CSS",
+]
+
+def examples_row():
+    with me.box(
+        style=me.Style(
+            display="flex", flex_direction="row", gap=16, margin=me.Margin(bottom=24)
+        )
+    ):
+        for i in EXAMPLES:
+            example(i)
+
+def example(text: str):
+    with me.box(
+        key=text,
+        on_click=click_example,
+        style=me.Style(
+            cursor="pointer",
+            background="#b9e1ff",
+            width="215px",
+            height=160,
+            font_weight=500,
+            line_height="1.5",
+            padding=me.Padding.all(16),
+            border_radius=16,
+            border=me.Border.all(me.BorderSide(width=1, color="blue", style="none")),
+        ),
+    ):
+        me.text(text)
+
+def click_example(e: me.ClickEvent):
     state = me.state(State)
-    for conversation in state.conversations:
-        with me.box(style=me.Style(margin=me.Margin(bottom=24))):
-            me.text(f"Model: {conversation.model}", style=me.Style(font_weight=500))
-            for message in conversation.messages:
-                display_message(message)
+    state.input = e.key
 
-def display_message(message: ChatMessage):
-    style = me.Style(
-        padding=me.Padding.all(12),
-        border_radius=8,
-        margin=me.Margin(bottom=8),
-    )
-    if message.role == "user":
-        style.background = "#e7f2ff"
-    else:
-        style.background = "#ffffff"
+@me.page(path="/conversation", stylesheets=STYLESHEETS)
+def conversation_page():
+    state = me.state(State)
+    model_picker_dialog()
+    with me.box(style=ROOT_BOX_STYLE):
+        header()
 
-    with me.box(style=style):
+        models = len(state.conversations)
+        models_px = models * 680
+        with me.box(
+            style=me.Style(
+                width=f"min({models_px}px, calc(100% - 32px))",
+                display="grid",
+                gap=16,
+                grid_template_columns=f"repeat({models}, 1fr)",
+                flex_grow=1,
+                overflow_y="hidden",
+                margin=me.Margin.symmetric(horizontal="auto"),
+                padding=me.Padding.symmetric(horizontal=16),
+            )
+        ):
+            for conversation in state.conversations:
+                model = conversation.model
+                messages = conversation.messages
+                with me.box(
+                    style=me.Style(
+                        overflow_y="auto",
+                    )
+                ):
+                    me.text("Model: " + model, style=me.Style(font_weight=500))
+
+                    for message in messages:
+                        if message.role == "user":
+                            user_message(message.content)
+                        else:
+                            model_message(message)
+                    if messages and model == state.conversations[-1].model:
+                        me.box(
+                            key="end_of_messages",
+                            style=me.Style(
+                                margin=me.Margin(
+                                    bottom="50vh" if messages[-1].in_progress else 0
+                                )
+                            ),
+                        )
+        with me.box(
+            style=me.Style(
+                display="flex",
+                justify_content="center",
+            )
+        ):
+            with me.box(
+                style=me.Style(
+                    width="min(680px, 100%)",
+                    padding=me.Padding(top=24, bottom=24),
+                )
+            ):
+                chat_input()
+
+def user_message(content: str):
+    with me.box(
+        style=me.Style(
+            background="#e7f2ff",
+            padding=me.Padding.all(16),
+            margin=me.Margin.symmetric(vertical=16),
+            border_radius=16,
+        )
+    ):
+        me.text(content)
+
+def model_message(message: ChatMessage):
+    with me.box(
+        style=me.Style(
+            background="#fff",
+            padding=me.Padding.all(16),
+            border_radius=16,
+            margin=me.Margin.symmetric(vertical=16),
+        )
+    ):
         me.markdown(message.content)
         if message.in_progress:
             me.progress_spinner()
 
+
 def header():
+    def navigate_home(e: me.ClickEvent):
+        me.navigate("/")
+        state = me.state(State)
+        state.conversations = []
+
     with me.box(
+        on_click=navigate_home,
         style=me.Style(
+            cursor="pointer",
             padding=me.Padding.all(16),
         ),
     ):
@@ -137,6 +244,7 @@ def header():
                 letter_spacing="0.3px",
             ),
         )
+
 
 def switch_model(e: me.ClickEvent):
     state = me.state(State)
@@ -195,6 +303,7 @@ def on_blur(e: me.InputBlurEvent):
 def send_prompt(e: me.ClickEvent):
     state = me.state(State)
     if not state.conversations:
+        me.navigate("/conversation")
         for model in state.models:
             state.conversations.append(Conversation(model=model, messages=[]))
     input = state.input
@@ -207,7 +316,7 @@ def send_prompt(e: me.ClickEvent):
         messages.append(ChatMessage(role="user", content=input))
         messages.append(ChatMessage(role="model", in_progress=True))
         yield
-
+        me.scroll_into_view(key="end_of_messages")
         if model == Models.GEMINI_1_5_FLASH.value:
             llm_response = gemini.send_prompt_flash(input, history)
         elif model == Models.GEMINI_1_5_PRO.value:
@@ -216,10 +325,8 @@ def send_prompt(e: me.ClickEvent):
             llm_response = claude.call_claude_sonnet(input, history)
         else:
             raise Exception("Unhandled model", model)
-
         for chunk in llm_response:
             messages[-1].content += chunk
             yield
         messages[-1].in_progress = False
         yield
-
