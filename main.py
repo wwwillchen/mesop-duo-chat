@@ -1,4 +1,69 @@
 import mesop as me
+from data_model import State, Models, ModelDialogState
+from dialog import dialog, dialog_actions
+
+def change_model_option(e: me.CheckboxChangeEvent):
+    s = me.state(ModelDialogState)
+    if e.checked:
+        s.selected_models.append(e.key)
+    else:
+        s.selected_models.remove(e.key)
+
+def set_gemini_api_key(e: me.InputBlurEvent):
+    me.state(State).gemini_api_key = e.value
+
+def set_claude_api_key(e: me.InputBlurEvent):
+    me.state(State).claude_api_key = e.value
+
+def model_picker_dialog():
+    state = me.state(State)
+    with dialog(state.is_model_picker_dialog_open):
+        with me.box(style=me.Style(display="flex", flex_direction="column", gap=12)):
+            me.text("API keys")
+            me.input(
+                label="Gemini API Key",
+                value=state.gemini_api_key,
+                on_blur=set_gemini_api_key,
+            )
+            me.input(
+                label="Claude API Key",
+                value=state.claude_api_key,
+                on_blur=set_claude_api_key,
+            )
+        me.text("Pick a model")
+        for model in Models:
+            if model.name.startswith("GEMINI"):
+                disabled = not state.gemini_api_key
+            elif model.name.startswith("CLAUDE"):
+                disabled = not state.claude_api_key
+            else:
+                disabled = False
+            me.checkbox(
+                key=model.value,
+                label=model.value,
+                checked=model.value in state.models,
+                disabled=disabled,
+                on_change=change_model_option,
+                style=me.Style(
+                    display="flex",
+                    flex_direction="column",
+                    gap=4,
+                    padding=me.Padding(top=12),
+                ),
+            )
+        with dialog_actions():
+            me.button("Cancel", on_click=close_model_picker_dialog)
+            me.button("Confirm", on_click=confirm_model_picker_dialog)
+
+def close_model_picker_dialog(e: me.ClickEvent):
+    state = me.state(State)
+    state.is_model_picker_dialog_open = False
+
+def confirm_model_picker_dialog(e: me.ClickEvent):
+    dialog_state = me.state(ModelDialogState)
+    state = me.state(State)
+    state.is_model_picker_dialog_open = False
+    state.models = dialog_state.selected_models
 
 ROOT_BOX_STYLE = me.Style(
     background="#e7f2ff",
@@ -15,23 +80,18 @@ ROOT_BOX_STYLE = me.Style(
     ],
 )
 def page():
+    model_picker_dialog()
     with me.box(style=ROOT_BOX_STYLE):
         header()
         with me.box(
             style=me.Style(
                 width="min(680px, 100%)",
-                margin=me.Margin.symmetric(
-                    horizontal="auto",
-                    vertical=36,
-                ),
+                margin=me.Margin.symmetric(horizontal="auto", vertical=36),
             )
         ):
             me.text(
                 "Chat with multiple models at once",
-                style=me.Style(
-                    font_size=20,
-                    margin=me.Margin(bottom=24),
-                ),
+                style=me.Style(font_size=20, margin=me.Margin(bottom=24)),
             )
             chat_input()
 
@@ -51,13 +111,11 @@ def header():
             ),
         )
 
-@me.stateclass
-class State:
-    input: str = ""
-
-def on_blur(e: me.InputBlurEvent):
+def switch_model(e: me.ClickEvent):
     state = me.state(State)
-    state.input = e.value
+    state.is_model_picker_dialog_open = True
+    dialog_state = me.state(ModelDialogState)
+    dialog_state.selected_models = state.models[:]
 
 def chat_input():
     state = me.state(State)
@@ -82,10 +140,33 @@ def chat_input():
                     border=me.Border.all(me.BorderSide(style="none")),
                 ),
             )
-        with me.content_button(type="icon", on_click=send_prompt):
+            with me.box(
+                style=me.Style(
+                    display="flex",
+                    padding=me.Padding(left=12, bottom=12),
+                    cursor="pointer",
+                ),
+                on_click=switch_model,
+            ):
+                me.text(
+                    "Model:",
+                    style=me.Style(font_weight=500, padding=me.Padding(right=6)),
+                )
+                if state.models:
+                    me.text(", ".join(state.models))
+                else:
+                    me.text("(no model selected)")
+        with me.content_button(
+            type="icon", on_click=send_prompt, disabled=not state.models
+        ):
             me.icon("send")
+
+def on_blur(e: me.InputBlurEvent):
+    state = me.state(State)
+    state.input = e.value
 
 def send_prompt(e: me.ClickEvent):
     state = me.state(State)
     print(f"Sending prompt: {state.input}")
+    print(f"Selected models: {state.models}")
     state.input = ""
